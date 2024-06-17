@@ -1,39 +1,8 @@
 import csv
 from os import system
 import platform
+from datetime import datetime
 
-class Shop:
-    def __init__(self, path: str):
-        self.path = path 
-        with open(path, 'r') as f:
-            reader = csv.reader(f)
-            next(reader)
-            item_list = []
-
-            for row in reader:
-                if len(row) != 5:
-                    continue
-                name, num_in_stock, ORIGINAL_PRICE, num_sold, current_discount_percentage = row
-                item_list.append(Item(str(name), int(num_in_stock), float(ORIGINAL_PRICE), int(num_sold), float(current_discount_percentage)))
-            self.item_list = item_list
-
-
-    def save(self):
-        try:
-            with open(self.path, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['name', 'num_in_stock', 'ORIGINAL_PRICE', 'num_sold', 'current_discount_percentage'])
-                for item in self.item_list:
-                    writer.writerow([
-                        item.name,
-                        item.num_in_stock,
-                        item.ORIGINAL_PRICE,
-                        item.num_sold,
-                        item.current_discount_percentage
-                    ])
-            return "File written successfully!"
-        except Exception as e:
-            return f"File failed to write! Error: {e}"
 
 class Item:
     def __init__(self, name: str, num_in_stock: int, ORIGINAL_PRICE: float, num_sold: int, current_discount_percentage: float) -> None:
@@ -78,42 +47,97 @@ class Item:
         discounted_price = self.ORIGINAL_PRICE * discount_multiplier
         return self.num_sold * discounted_price
 
-    def update_discount(self, discount: float, shop: Shop):
+    def update_discount(self, discount: float):
         if 0.0 <= discount <= 100.0:
             self.current_discount_percentage = discount
             print(f"Discount for {self.name} updated to {self.current_discount_percentage}%")
         else:
             print("Invalid discount percentage. Must be between 0 and 100.")
-        shop.save() 
 
+class Shop:
+    def __init__(self, items_path: str, sales_path):
+        self.items_path = items_path 
+        self.sales_path = sales_path
+        with open(items_path, 'r') as f:
+            reader = csv.reader(f)
+            next(reader)
+            item_list = []
 
+            for row in reader:
+                if len(row) != 5:
+                    continue
+                name, num_in_stock, ORIGINAL_PRICE, num_sold, current_discount_percentage = row
+                item_list.append(Item(str(name), int(num_in_stock), float(ORIGINAL_PRICE), int(num_sold), float(current_discount_percentage)))
+            self.item_list = item_list
+
+    def save(self):
+        try:
+            with open(self.items_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['name', 'num_in_stock', 'ORIGINAL_PRICE', 'num_sold', 'current_discount_percentage'])
+                for item in self.item_list:
+                    writer.writerow([
+                        item.name,
+                        item.num_in_stock,
+                        item.ORIGINAL_PRICE,
+                        item.num_sold,
+                        item.current_discount_percentage
+                    ])
+            return "File written successfully!"
+        except Exception as e:
+            return f"File failed to write! Error: {e}"
+        
+    def add_sale(self, product: Item):
+        if product.num_sold < 1:
+            raise ValueError(f"Product {product.name} cannot sell, as the number of {product.name} left is less than 1!")
+        
+        with open(self.sales_path,"a") as f:
+            try:
+                f.write(f"{product.name},{datetime.now()}, {str((product.ORIGINAL_PRICE-(product.ORIGINAL_PRICE / 1 / 100*product.current_discount_percentage)))}\n")
+            except ZeroDivisionError:
+                f.write(f"{product.name},{datetime.now()}, {str(product.ORIGINAL_PRICE)}\n")
+        product.num_sold+=1
+        product.num_in_stock-=1
 
 def handle_input(user_input: str, shop: Shop):
-    if user_input in ["clear shell","cls","clear"]:
+    if user_input in ["clear shell","cls","clear","1"]:
         if platform.system() == "Windows":
             system('cls')
         else:
             system('clear')
-    elif user_input in ["ls", "list"]:
+    
+    elif user_input in ["ls", "list","2"]:
         for item in shop.item_list:
             print(item)
-    elif user_input == "apply discount":
+    
+    elif user_input in ["apply discount","manage discount","3"]:
         discounted_item_name = str(input("Which item do you want to apply the discount to?    ")).strip()
         for item in shop.item_list:
             if item.name.lower() == discounted_item_name.lower(): #looks bad if I don't put lower here :D
                 try:
                     discount = float(input(f"Enter discount percentage for {item.name}:    "))
-                    item.update_discount(discount, shop)
+                    item.update_discount(discount)
                 except ValueError:
                     print("Invalid discount value. Please enter a number.")
                 break
         else:
             print(f"Item '{discounted_item_name}' not found in the shop.")
+        shop.save()
+    
+    elif user_input in ["new purchase","handle new", "4", "add sale", "new sale"]:
+        sold_item_name = str(input("Enter the name of the product that sold:    ")).lower()
+        for item in shop.item_list:
+            if item.name.lower() == sold_item_name: #both lower, but i use it multiple times so its a very very slight optimisation.
+                shop.add_sale(product=item)
+                break
+        else:
+            print(f"Item '{sold_item_name}' not found in the shop. Enter 4 to retry.")
+        shop.save()
 
 
 
 if __name__ == "__main__":
-    shop = Shop("items.csv")
+    shop = Shop("items.csv", "sales.csv")
     while True:
         user_input = str(input()).lower()
         handle_input(user_input, shop)
